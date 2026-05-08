@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.env
+
+# Secrets / OAuth
+client_secret.json
+youtube_token.pickle
+*.pickle
+
+# Generated outputs
+output/
+audio/
+metadata/current_upload.json
+images/raw/
+images/final/
+
+# Video/audio files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.mp3
+*.wav
+
+# Stable Diffusion models
+*.safetensors
+*.ckpt
+*.pt
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Logs
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
