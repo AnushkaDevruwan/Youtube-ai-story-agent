@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 venv/
 .env
+output/used_topics.json
 
 # Secrets / OAuth
 client_secret.json

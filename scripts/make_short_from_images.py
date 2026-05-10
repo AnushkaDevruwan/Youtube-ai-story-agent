@@ -81,14 +81,26 @@ def make_video_clip(image_path, duration, index):
     fitted_path = temp_dir / f"fitted_scene{index}.png"
     resize_crop_image(image_path, fitted_path)
 
-    clip = (
-        ImageClip(str(fitted_path))
-        .set_duration(duration)
-        .set_position(("center", "center"))
-    )
+    clip = ImageClip(str(fitted_path)).set_duration(duration)
 
-    return clip
+    # Subtle Ken Burns movement.
+    # Odd scenes zoom in, even scenes zoom out slightly.
+    zoom_strength = 0.045
 
+    if index % 2 == 1:
+        def zoom(t):
+            return 1.0 + zoom_strength * (t / duration)
+    else:
+        def zoom(t):
+            return 1.045 - zoom_strength * (t / duration)
+
+    clip = clip.resize(zoom)
+    clip = clip.set_position(("center", "center"))
+
+    return CompositeVideoClip(
+        [clip],
+        size=(VIDEO_W, VIDEO_H)
+    ).set_duration(duration)
 
 def clean_caption_text(text):
     text = re.sub(r"\s+", " ", text).strip()
@@ -169,6 +181,38 @@ def render_caption_image(text, out_path):
     x = max((canvas_w - total_w) // 2, 20)
     y = 165
 
+    # Semi-transparent dark background pill for readability
+    pill_padding_x = 38
+    pill_padding_y = 30
+
+    text_height = max(h1, h2)
+    pill_x1 = max(x - pill_padding_x, 10)
+    pill_y1 = max(y - text_height - pill_padding_y, 20)
+    pill_x2 = min(x + total_w + pill_padding_x, canvas_w - 10)
+    pill_y2 = min(y + pill_padding_y, canvas_h - 20)
+
+    overlay = img.copy()
+
+    cv2.rectangle(
+        overlay,
+        (pill_x1, pill_y1),
+        (pill_x2, pill_y2),
+        (0, 0, 0, 145),
+        thickness=-1
+    )
+
+    # Rounded corners approximation using circles
+    radius = 28
+
+    cv2.circle(overlay, (pill_x1, pill_y1 + radius), radius, (0, 0, 0, 145), -1)
+    cv2.circle(overlay, (pill_x2, pill_y1 + radius), radius, (0, 0, 0, 145), -1)
+    cv2.circle(overlay, (pill_x1, pill_y2 - radius), radius, (0, 0, 0, 145), -1)
+    cv2.circle(overlay, (pill_x2, pill_y2 - radius), radius, (0, 0, 0, 145), -1)
+
+    alpha = overlay[:, :, 3:4] / 255.0
+    img[:, :, :3] = (overlay[:, :, :3] * alpha + img[:, :, :3] * (1 - alpha)).astype(np.uint8)
+    img[:, :, 3] = np.maximum(img[:, :, 3], overlay[:, :, 3])
+
     def draw_text_with_outline(image, text_value, pos, text_color):
         px, py = pos
 
@@ -236,33 +280,57 @@ def create_caption_clips(package, total_duration):
     caption_dir.mkdir(parents=True, exist_ok=True)
 
     caption_clips = []
-    scene_duration = total_duration / len(scenes)
     counter = 1
 
+    # Use narration word count to estimate timing instead of equal scene duration
+    scene_texts = [
+        scene.get("scene_narration", "").strip()
+        for scene in scenes
+    ]
+
+    scene_word_counts = [
+        max(1, len(clean_caption_text(text).split()))
+        for text in scene_texts
+    ]
+
+    total_words = sum(scene_word_counts)
+
+    current_time = 0.0
+
     for scene_index, scene in enumerate(scenes):
-        scene_start = scene_index * scene_duration
         scene_text = scene.get("scene_narration", "").strip()
 
         if not scene_text:
             continue
 
+        scene_words = scene_word_counts[scene_index]
+        scene_duration = total_duration * (scene_words / total_words)
+        scene_start = current_time
+        scene_end = scene_start + scene_duration
+
         chunks = split_into_chunks(scene_text, max_words=2)
 
         if not chunks:
+            current_time = scene_end
             continue
 
-        chunk_duration = max(0.45, scene_duration / len(chunks))
+        # Caption speed control
+        chunk_duration = scene_duration / len(chunks)
+
+        # Make captions slightly faster so they do not lag behind speech
+        chunk_duration *= 0.85
+
+
+        # Avoid captions staying too long
+        chunk_duration = max(0.22, min(chunk_duration, 0.50))
 
         for chunk_index, chunk in enumerate(chunks):
             start_time = scene_start + chunk_index * chunk_duration
 
-            if start_time >= scene_start + scene_duration:
+            if start_time >= scene_end:
                 break
 
-            duration = min(
-                chunk_duration,
-                (scene_start + scene_duration) - start_time
-            )
+            duration = min(chunk_duration, scene_end - start_time)
 
             caption_path = caption_dir / f"caption_{counter}.png"
             render_caption_image(chunk, caption_path)
@@ -278,6 +346,8 @@ def create_caption_clips(package, total_duration):
 
             caption_clips.append(caption_clip)
             counter += 1
+
+        current_time = scene_end
 
     return caption_clips
 
