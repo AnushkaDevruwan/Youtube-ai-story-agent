@@ -11,7 +11,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parents[1]
 
 CLIENT_SECRET_FILE = ROOT / "client_secret.json"
 TOKEN_FILE = ROOT / "youtube_token.pickle"

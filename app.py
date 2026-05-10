@@ -13,7 +13,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import requests
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parent
 PYTHON_EXE = ROOT / "venv" / "Scripts" / "python.exe"
 RUN_PIPELINE = ROOT / "run_pipeline.py"
 UPLOAD_SCRIPT = ROOT / "scripts" / "upload_youtube.py"

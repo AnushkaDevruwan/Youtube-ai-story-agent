@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_FILE = ROOT / "output" / "story_package.json"
 IMAGE_DIR = ROOT / "images" / "raw"
 IMAGE_DIR.mkdir(parents=True, exist_ok=True)

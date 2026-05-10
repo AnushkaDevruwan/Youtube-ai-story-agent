@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parent
 SCRIPTS = ROOT / "scripts"
 OUTPUT = ROOT / "output"
 OUTPUT.mkdir(parents=True, exist_ok=True)

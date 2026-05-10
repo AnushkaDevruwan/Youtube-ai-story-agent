@@ -1,5 +1,5 @@
 @echo off
-cd /d C:\youtube-agent
+cd /d "%~dp0"
 call venv\Scripts\activate
 python app.py
 pause

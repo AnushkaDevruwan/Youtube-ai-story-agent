@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_FILE = ROOT / "output" / "story_package.json"
 OUTPUT_FILE = ROOT / "output" / "narration.txt"
 

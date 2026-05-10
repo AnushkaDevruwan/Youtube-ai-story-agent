@@ -2,7 +2,7 @@ import asyncio
 from pathlib import Path
 import edge_tts
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parents[1]
 TEXT_FILE = ROOT / "output" / "narration.txt"
 AUDIO_DIR = ROOT / "audio"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)

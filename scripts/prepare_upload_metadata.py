@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_FILE = ROOT / "output" / "story_package.json"
 METADATA_DIR = ROOT / "metadata"
 METADATA_DIR.mkdir(parents=True, exist_ok=True)

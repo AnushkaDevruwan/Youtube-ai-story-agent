@@ -1,5 +1,5 @@
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 from moviepy.editor import (
     ImageClip,
     AudioFileClip,
@@ -8,8 +8,13 @@ from moviepy.editor import (
 )
 import json
 import re
+import cv2
+import numpy as np
+import faulthandler
+faulthandler.enable()
 
-ROOT = Path("C:/youtube-agent")
+
+ROOT = Path(__file__).resolve().parents[1]
 
 IMAGE_DIR = ROOT / "images" / "raw"
 AUDIO_FILE = ROOT / "audio" / "voiceover.mp3"
@@ -76,23 +81,13 @@ def make_video_clip(image_path, duration, index):
     fitted_path = temp_dir / f"fitted_scene{index}.png"
     resize_crop_image(image_path, fitted_path)
 
-    clip = ImageClip(str(fitted_path)).set_duration(duration)
+    clip = (
+        ImageClip(str(fitted_path))
+        .set_duration(duration)
+        .set_position(("center", "center"))
+    )
 
-    # Slow zoom-in effect
-    zoom_strength = 0.055
-
-    def zoom(t):
-        return 1 + zoom_strength * (t / duration)
-
-    clip = clip.resize(zoom)
-    clip = clip.set_position(("center", "center"))
-
-    background = CompositeVideoClip(
-        [clip],
-        size=(VIDEO_W, VIDEO_H)
-    ).set_duration(duration)
-
-    return background
+    return clip
 
 
 def clean_caption_text(text):
@@ -118,53 +113,28 @@ def split_into_chunks(text, max_words=2):
 
     return chunks
 
-
-def get_font(size):
-    candidates = [
-        "C:/Windows/Fonts/impact.ttf",
-        "C:/Windows/Fonts/arialbd.ttf",
-        "C:/Windows/Fonts/Arialbd.ttf",
-        "C:/Windows/Fonts/segoeuib.ttf"
-    ]
-
-    for path in candidates:
-        p = Path(path)
-        if p.exists():
-            return ImageFont.truetype(str(p), size=size)
-
-    return ImageFont.load_default()
-
-
-def text_size(draw, text, font, stroke_width=0):
-    bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
-    return bbox[2] - bbox[0], bbox[3] - bbox[1]
-
-
 def render_caption_image(text, out_path):
     """
-    Creates a transparent PNG caption image.
+    Creates a transparent PNG caption image using OpenCV instead of Pillow.
     Style:
     - Big white first word
-    - Yellow highlighted second word
-    - Thick black stroke
-    - No ImageMagick required
+    - Yellow highlighted remaining words
+    - Thick black outline
+    - Transparent background
     """
     text = clean_caption_text(text).upper()
 
     canvas_w = 1000
     canvas_h = 280
 
-    img = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    # Transparent BGRA canvas
+    img = np.zeros((canvas_h, canvas_w, 4), dtype=np.uint8)
 
-    font = get_font(96)
-    stroke = 7
+    if not text.strip():
+        cv2.imwrite(str(out_path), img)
+        return
 
     words = text.split()
-
-    if not words:
-        img.save(out_path)
-        return
 
     if len(words) >= 2:
         first_part = words[0]
@@ -173,64 +143,70 @@ def render_caption_image(text, out_path):
         first_part = words[0]
         second_part = ""
 
-    y = 82
+    first_text = first_part + (" " if second_part else "")
+    second_text = second_part
 
-    if second_part:
-        first_text = first_part + " "
-        second_text = second_part
+    font = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 2.4
+    thickness = 4
+    outline_thickness = 10
 
-        w1, _ = text_size(draw, first_text, font, stroke)
-        w2, _ = text_size(draw, second_text, font, stroke)
+    def measure(txt, scale):
+        (w, h), baseline = cv2.getTextSize(txt, font, scale, thickness)
+        return w, h, baseline
+
+    w1, h1, _ = measure(first_text, font_scale)
+    w2, h2, _ = measure(second_text, font_scale) if second_text else (0, 0, 0)
+    total_w = w1 + w2
+
+    # Shrink text until it fits
+    while total_w > 940 and font_scale > 1.0:
+        font_scale -= 0.12
+        w1, h1, _ = measure(first_text, font_scale)
+        w2, h2, _ = measure(second_text, font_scale) if second_text else (0, 0, 0)
         total_w = w1 + w2
 
-        # If text is too wide, use smaller font.
-        if total_w > 940:
-            font = get_font(78)
-            w1, _ = text_size(draw, first_text, font, stroke)
-            w2, _ = text_size(draw, second_text, font, stroke)
-            total_w = w1 + w2
-            y = 92
+    x = max((canvas_w - total_w) // 2, 20)
+    y = 165
 
-        x = (canvas_w - total_w) // 2
+    def draw_text_with_outline(image, text_value, pos, text_color):
+        px, py = pos
 
-        draw.text(
-            (x, y),
-            first_text,
-            font=font,
-            fill="white",
-            stroke_width=stroke,
-            stroke_fill="black"
+        # black outline
+        for dx, dy in [(-2, -2), (-2, 0), (-2, 2),
+                       (0, -2),           (0, 2),
+                       (2, -2),  (2, 0),  (2, 2)]:
+            cv2.putText(
+                image,
+                text_value,
+                (px + dx, py + dy),
+                font,
+                font_scale,
+                (0, 0, 0, 255),
+                outline_thickness,
+                cv2.LINE_AA
+            )
+
+        # main text
+        cv2.putText(
+            image,
+            text_value,
+            (px, py),
+            font,
+            font_scale,
+            text_color,
+            thickness,
+            cv2.LINE_AA
         )
 
-        draw.text(
-            (x + w1, y),
-            second_text,
-            font=font,
-            fill=(255, 215, 0),
-            stroke_width=stroke,
-            stroke_fill="black"
-        )
-    else:
-        w, _ = text_size(draw, first_part, font, stroke)
+    # Draw first word in white
+    draw_text_with_outline(img, first_text, (x, y), (255, 255, 255, 255))
 
-        if w > 940:
-            font = get_font(78)
-            w, _ = text_size(draw, first_part, font, stroke)
-            y = 92
+    # Draw second part in yellow
+    if second_text:
+        draw_text_with_outline(img, second_text, (x + w1, y), (0, 215, 255, 255))  # yellow in BGRA
 
-        x = (canvas_w - w) // 2
-
-        draw.text(
-            (x, y),
-            first_part,
-            font=font,
-            fill="white",
-            stroke_width=stroke,
-            stroke_fill="black"
-        )
-
-    img.save(out_path)
-
+    cv2.imwrite(str(out_path), img)
 
 def apply_pop_effect(clip, duration):
     """
@@ -275,13 +251,11 @@ def create_caption_clips(package, total_duration):
         if not chunks:
             continue
 
-        # Keep captions fast but readable.
         chunk_duration = max(0.45, scene_duration / len(chunks))
 
         for chunk_index, chunk in enumerate(chunks):
             start_time = scene_start + chunk_index * chunk_duration
 
-            # Do not let captions exceed scene duration.
             if start_time >= scene_start + scene_duration:
                 break
 
@@ -307,7 +281,6 @@ def create_caption_clips(package, total_duration):
 
     return caption_clips
 
-
 def main():
     scene_files = get_scene_files()
     package = load_package()
@@ -331,11 +304,18 @@ def main():
         clip = make_video_clip(image_path, scene_duration, index)
         clips.append(clip)
 
+    print("DEBUG: Before concatenate_videoclips", flush=True)
     video = concatenate_videoclips(clips, method="compose")
+    print("DEBUG: After concatenate_videoclips", flush=True)
+
+    print("DEBUG: Before set_audio", flush=True)
     video = video.set_audio(audio)
     video = video.set_duration(total_duration)
+    print("DEBUG: After set_audio", flush=True)
 
+    print("DEBUG: Before create_caption_clips", flush=True)
     caption_clips = create_caption_clips(package, total_duration)
+    print("DEBUG: After create_caption_clips", flush=True)
 
     if caption_clips:
         print(f"Adding {len(caption_clips)} pop captions...")
@@ -353,8 +333,9 @@ def main():
         fps=FPS,
         codec="libx264",
         audio_codec="aac",
-        threads=4,
-        preset="medium"
+        threads=1,
+        preset="ultrafast",
+        logger="bar"
     )
 
     print(f"Final video created: {OUTPUT_VIDEO}")

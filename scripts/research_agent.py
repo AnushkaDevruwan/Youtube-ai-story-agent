@@ -13,7 +13,7 @@ try:
 except Exception:
     pass
 
-ROOT = Path("C:/youtube-agent")
+ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = ROOT / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
