@@ -6,7 +6,7 @@ import random
 import time
 from dotenv import load_dotenv
 from google import genai
-
+from pathlib import Path
 load_dotenv()
 
 try:
@@ -17,6 +17,33 @@ except Exception:
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DIR = ROOT / "output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+USED_TOPICS_FILE = OUTPUT_DIR / "used_topics.json"
+
+
+def load_used_topics():
+    if not USED_TOPICS_FILE.exists():
+        return []
+
+    try:
+        return json.loads(USED_TOPICS_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+
+
+def save_used_topic(topic):
+    used_topics = load_used_topics()
+
+    if topic not in used_topics:
+        used_topics.append(topic)
+
+    USED_TOPICS_FILE.write_text(
+        json.dumps(used_topics, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
 
 def clean_json_text(text):
     text = text.strip()
@@ -110,9 +137,30 @@ def main():
             if not isinstance(topics, list) or not topics:
                 raise ValueError("Topic list is empty")
 
-            # Choose one of the top 5 randomly so the channel does not repeat the same style too much
-            candidates = topics[:5]
+            # Choose one of the top 5 randomly, but avoid previously used topics
+            used_topics = set(load_used_topics())
+
+            candidates = [
+                topic for topic in topics[:5]
+                if topic.get("topic", "").strip() not in used_topics
+            ]
+
+            # If all top 5 were already used, fall back to the full list
+            if not candidates:
+                candidates = [
+                    topic for topic in topics
+                    if topic.get("topic", "").strip() not in used_topics
+                ]
+
+            # If everything was used, reset naturally by allowing all topics again
+            if not candidates:
+                candidates = topics[:5]
+
             chosen = random.choice(candidates)
+            chosen_topic = chosen.get("topic", "").strip()
+
+            if chosen_topic:
+                save_used_topic(chosen_topic)
 
             print(json.dumps(chosen, ensure_ascii=False))
             return
